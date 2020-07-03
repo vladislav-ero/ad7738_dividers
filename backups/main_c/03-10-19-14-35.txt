@@ -1,0 +1,325 @@
+// Содержимое файла main.c
+
+#include "MDR32Fx.h"                    // Device header
+#include "MDR32F9Qx_config.h"           // Keil::Device:Startup
+
+#include <MDR32F9Qx_port.h>
+#include <MDR32F9Qx_rst_clk.h>
+#include "MDR32F9Qx_timer.h"            // Keil::Drivers:TIMER
+
+#include "MDR32F9Qx_uart.h"             // Keil::Drivers:UART
+
+#include "MDR32F9Qx_i2c.h"              // Keil::Drivers:I2C
+#include "MDR32F9Qx_adc.h"              // Keil::Drivers:ADC
+
+int j;
+int i;
+int T;
+
+#define DELAY1(D) for (j = D; j > 0; j--)
+#define DELAY2(T) for (i = T; i > 0; i--)
+
+// Процедура обработки внешнего прерывания EXT_INT2
+void EXT_INT2_IRQHandler(void) 
+{ 
+	T /= 2;
+	if (T < 200) T = 200000; 
+	// Задержка, в течение которой прекращается дребезг контактов 
+	DELAY1(100000); 
+	// Если сигнал внешнего прерывания завершен,
+	// очистить флаг внешнего прерывания EXT_INT2 
+	if (PORT_ReadInputDataBit(MDR_PORTB, PORT_Pin_10) == 0)
+	{
+		NVIC_ClearPendingIRQ(EXT_INT2_IRQn); 
+	}
+}
+
+void Timer1_IRQHandler()
+{
+	// Check if TIMER1 interrupt has occured
+	if (TIMER_GetITStatus(MDR_TIMER1, TIMER_STATUS_CNT_ZERO)) 
+		LED();
+	
+	// Reset TIMER1 interruption flag
+	TIMER_ClearITPendingBit(MDR_TIMER1, TIMER_STATUS_CNT_ZERO);
+}
+
+void PortsInit(void)
+{
+	PORT_InitTypeDef Nastroyka; 
+	// Включение тактирования порта C 
+	RST_CLK_PCLKcmd(RST_CLK_PCLK_PORTC, ENABLE); 
+	// Заполнение структуры значениями по умолчанию 
+	PORT_StructInit(&Nastroyka); 
+	// Объявление номера линии порта, 
+	// которая настраивается данной структурой 
+	Nastroyka.PORT_Pin = PORT_Pin_0; 
+	// Конфигурация группы линий как выход 
+	Nastroyka.PORT_OE = PORT_OE_OUT; 
+	// Работа в режиме порта ввода-вывода 
+	Nastroyka.PORT_FUNC = PORT_FUNC_PORT; 
+	// Цифровой режим 
+	Nastroyka.PORT_MODE = PORT_MODE_DIGITAL; 
+	// Низкая скорость переключения (пологий фронт) 
+	Nastroyka.PORT_SPEED = PORT_SPEED_SLOW; 
+	// Инициализация порта C объявленной структурой 
+	PORT_Init(MDR_PORTC, &Nastroyka);
+}
+
+// Процедура включения/выключения светодиода 
+void LED() { 
+	// Объявление переменной i 
+	static uint8_t i = 0; 
+	// Инкрементируя i, находить остаток от деления i на 2 
+	switch (i++ % 2) { 
+		// В случае если остаток равен нулю, сбросить бит по линии 0 
+		case 0: 
+			PORT_ResetBits(MDR_PORTC, PORT_Pin_0); 
+		// В противном случае перейти к следующей команде 
+		break; 
+		// В случае если остаток равен единице, установить бит по ли-нии 0 
+		case 1: PORT_SetBits(MDR_PORTC, PORT_Pin_0); 
+		// В противном случае перейти к следующей команде 
+		break; 
+	} 
+}
+
+void LED_ini(void)
+{
+	// Включаем тактирование порта C
+	RST_CLK_PCLKcmd (RST_CLK_PCLK_PORTC, ENABLE);
+	
+	// Заводим структуру конфигурации вывода(-ов) порта GPIO
+	PORT_InitTypeDef GPIOInitStruct;
+	
+	// Инициализируем структуру конфигурации вывода(-ов) порта значениями по 
+	// умолчанию
+	PORT_StructInit(&GPIOInitStruct);
+  
+	// Изменяем значения по умолчанию на необходимые нам настройки
+	GPIOInitStruct.PORT_Pin        = PORT_Pin_0;
+	GPIOInitStruct.PORT_OE         = PORT_OE_OUT;       // Default is IN
+	GPIOInitStruct.PORT_PULL_UP	   = PORT_PULL_UP_OFF;  // Default is OFF
+	GPIOInitStruct.PORT_PULL_DOWN  = PORT_PULL_DOWN_ON; // Default is OFF
+	GPIOInitStruct.PORT_PD_SHM	   = PORT_PD_SHM_OFF;   // Default is OFF
+	GPIOInitStruct.PORT_PD		   = PORT_PD_DRIVER;    // Default is DRIVER
+	GPIOInitStruct.PORT_GFEN	   = PORT_GFEN_OFF;     // Default is OFF
+	GPIOInitStruct.PORT_FUNC	   = PORT_FUNC_PORT;    // Default is PORT
+	GPIOInitStruct.PORT_SPEED      = PORT_SPEED_SLOW;   // Default is OFF
+	GPIOInitStruct.PORT_MODE       = PORT_MODE_DIGITAL; // Default is ANALOG
+  
+	// Применяем заполненную нами структуру для PORTC.
+	PORT_Init(MDR_PORTC, &GPIOInitStruct);
+}
+
+
+void Button_ini(void)
+{
+	RST_CLK_PCLKcmd (RST_CLK_PCLK_PORTB, ENABLE);
+	PORT_InitTypeDef ButtonInitStruct;
+	PORT_StructInit(&ButtonInitStruct);
+	// Изменяем значения по умолчанию на необходимые нам настройки
+	ButtonInitStruct.PORT_Pin   = PORT_Pin_10;
+	ButtonInitStruct.PORT_GFEN	= PORT_GFEN_OFF;     // Default is OFF
+	ButtonInitStruct.PORT_FUNC	= PORT_FUNC_ALTER;   // Default is PORT
+	ButtonInitStruct.PORT_SPEED = PORT_SPEED_SLOW;   // Default is OFF
+	ButtonInitStruct.PORT_MODE  = PORT_MODE_DIGITAL; // Default is ANALOG
+	PORT_Init(MDR_PORTB, &ButtonInitStruct);
+}
+
+void Interrupt_ini(void)
+{
+	NVIC_ClearPendingIRQ(EXT_INT2_IRQn); // Reset external interrupt flag
+	__enable_irq();                      // Enable interrupts
+	NVIC_EnableIRQ(EXT_INT2_IRQn);       // Enable external interrupt
+}
+
+void Timer_ini(void)
+{
+	RST_CLK_PCLKcmd(RST_CLK_PCLK_TIMER1, ENABLE); // Enable Timer1 clocking
+	TIMER_CntInitTypeDef TimerInitStruct;
+	TIMER_CntStructInit(&TimerInitStruct);
+	
+	TIMER_BRGInit(MDR_TIMER1, TIMER_HCLKdiv1); // Set clock divider
+
+	TimerInitStruct.TIMER_Prescaler = 8000; // CPUclk div 8000 == 1000 Hz (1ms)
+	TimerInitStruct.TIMER_Period    = 500;  // 1 ms * 500 == 500 ms
+	
+	TIMER_CntInit(MDR_TIMER1, &TimerInitStruct);
+	
+	NVIC_EnableIRQ(Timer1_IRQn); // Enable Timer1 Interrupt
+	TIMER_ITConfig(MDR_TIMER1, TIMER_STATUS_CNT_ZERO, ENABLE);
+	//Interrupt is active when TIMER1 value equals zero
+	NVIC_SetPriority(Timer1_IRQn, 0);
+	TIMER_Cmd(MDR_TIMER1, ENABLE); // Run TIMER1
+}
+
+void UART_ini(void)
+{
+	PORT_InitTypeDef GPIOInitStruct;
+	
+	RST_CLK_PCLKcmd (RST_CLK_PCLK_PORTA, ENABLE);
+		
+	PORT_DeInit(MDR_PORTA);
+	
+	GPIOInitStruct.PORT_Pin        = PORT_Pin_7;
+	GPIOInitStruct.PORT_OE         = PORT_OE_OUT; // Default is IN
+	GPIOInitStruct.PORT_PULL_UP	   = PORT_PULL_UP_OFF; // Default is OFF
+	GPIOInitStruct.PORT_PULL_DOWN  = PORT_PULL_DOWN_OFF; // Default is OFF
+	GPIOInitStruct.PORT_PD_SHM	   = PORT_PD_SHM_OFF; // Default is OFF
+	GPIOInitStruct.PORT_PD		   = PORT_PD_DRIVER; // Default is DRIVER
+	GPIOInitStruct.PORT_GFEN	   = PORT_GFEN_OFF; // Default is OFF
+	GPIOInitStruct.PORT_FUNC	   = PORT_FUNC_OVERRID; // Default is PORT
+	GPIOInitStruct.PORT_SPEED      = PORT_SPEED_MAXFAST; // Default is OFF
+	GPIOInitStruct.PORT_MODE       = PORT_MODE_DIGITAL; // Default is ANALOG
+	
+	PORT_Init(MDR_PORTA, &GPIOInitStruct);
+	
+	
+	UART_InitTypeDef UARTInitStruct;
+	
+	// Enable UART1 clocking
+	RST_CLK_PCLKcmd (RST_CLK_PCLK_UART1, ENABLE);
+	
+	UART_BRGInit(MDR_UART1, UART_HCLKdiv1);
+	
+	UARTInitStruct.UART_BaudRate			 = 9600;
+	UARTInitStruct.UART_WordLength			 = UART_WordLength8b;
+	UARTInitStruct.UART_StopBits			 = UART_StopBits1;
+	UARTInitStruct.UART_Parity				 = UART_Parity_No;
+	UARTInitStruct.UART_FIFOMode			 = UART_FIFO_OFF;
+	UARTInitStruct.UART_HardwareFlowControl  = UART_HardwareFlowControl_TXE;
+	
+	// Initialize UART1
+	UART_Init(MDR_UART1, &UARTInitStruct);
+	
+	// Turn on UART1
+	UART_Cmd(MDR_UART1, ENABLE);
+}
+
+void ADC_ini(void)
+{
+	__IO uint32_t H_Level = 0x900;
+	__IO uint32_t L_Level = 0x800;
+	
+	PORT_InitTypeDef PORT_InitStructure;
+	ADC_InitTypeDef sADC;
+	ADCx_InitTypeDef sADCx;
+	
+	RST_CLK_DeInit();
+	RST_CLK_CPU_PLLconfig (RST_CLK_CPU_PLLsrcHSIdiv2,0);
+	/* Enable peripheral clocks --------------------------------------------------*/
+	RST_CLK_PCLKcmd((RST_CLK_PCLK_RST_CLK | RST_CLK_PCLK_ADC | RST_CLK_PCLK_PORTD),ENABLE);
+
+	/* Init NVIC */
+	SCB->AIRCR = 0x05FA0000 | ((uint32_t)0x500);
+	SCB->VTOR = 0x08000000;
+	/* Disable all interrupt */
+	NVIC->ICPR[0] = 0xFFFFFFFF;
+	NVIC->ICER[0] = 0xFFFFFFFF;
+
+	/* Enable ADC interrupt  */
+	NVIC->ISER[0] = (1<<ADC_IRQn);
+	
+	/* Reset PORTD settings */
+	PORT_DeInit(MDR_PORTD);
+	
+	/* Configure ADC pin: ADC7 */
+	/* Configure PORTD pin 7 */
+	PORT_InitStructure.PORT_Pin   = PORT_Pin_7;
+	PORT_InitStructure.PORT_OE    = PORT_OE_IN;
+	PORT_InitStructure.PORT_MODE  = PORT_MODE_ANALOG;
+	
+	PORT_Init(MDR_PORTD, &PORT_InitStructure);
+	
+	/* Configure PORTD pins 10, 11 for output to switch LED1,2 on/off */ 
+	/* Configure PORTD pins 10, 11 */
+	PORT_InitStructure.PORT_FUNC  = PORT_FUNC_PORT;
+	PORT_InitStructure.PORT_Pin   = PORT_Pin_10 | PORT_Pin_11 | PORT_Pin_12;
+	PORT_InitStructure.PORT_OE    = PORT_OE_OUT;
+	PORT_InitStructure.PORT_MODE  = PORT_MODE_DIGITAL;
+	PORT_InitStructure.PORT_SPEED = PORT_SPEED_SLOW;
+	
+	PORT_Init(MDR_PORTD, &PORT_InitStructure);
+	
+	
+	ADC_DeInit(); // Reset all ADC settings
+	
+	//Fills each ADC_InitStruct member with its default value
+	ADC_StructInit(&sADC);
+	
+	/* Initializes the ADC peripheral according to
+	the specified parameters in the ADC_InitStruct */
+	ADC_Init(&sADC);
+	
+	//Fills each ADCx_InitStruct member with its default value.
+	ADCx_StructInit (&sADCx);
+	/*  ADCx_StructInit fills with default values
+	*	sADCx.ADC_ClockSource 	   //Default ADC_CLOCK_SOURCE_CPU
+	*	sADCx.ADC_SamplingMode	   //Default ADC_SAMPLING_MODE_SINGLE_CONV
+	*	sADCx.ADC_ChannelSwitching //ADC_CH_SWITCHING_Disable
+	*	sADCx.ADC_ChannelNumber	   //ADC_CH_ADC0
+	*	sADCx.ADC_Channels		   //Default 0
+	*	sADCx.ADC_LevelControl	   //Default ADC_LEVEL_CONTROL_Disable
+	*	sADCx.ADC_LowLevel		   //Default 0
+	*	sADCx.ADC_HighLevel		   //Default 0
+	*	sADCx.ADC_VRefSource	   //Default ADC_VREF_SOURCE_INTERNAL
+	*	sADCx.ADC_IntVRefSource	   //Default ADC_INT_VREF_SOURCE_INEXACT
+	*	sADCx.ADC_Prescaler		   //Default ADC_CLK_div_None
+	*	sADCx.ADC_DelayGo		   //Default 0
+	*/
+	sADCx.ADC_ClockSource      = ADC_CLOCK_SOURCE_CPU; //выбор источника тактирования, частота ядра
+	sADCx.ADC_SamplingMode     = ADC_SAMPLING_MODE_CICLIC_CONV; //режим многократного преобразования
+	sADCx.ADC_ChannelSwitching = ADC_CH_SWITCHING_Disable; // автоматическое переключение каналов
+	sADCx.ADC_ChannelNumber    = ADC_CH_ADC7; //выбор номера канала
+	sADCx.ADC_Channels         = 0; //количество используемых каналов, если включен перебор ADC_CH_SWITCHING_Enable
+	sADCx.ADC_LevelControl     = ADC_LEVEL_CONTROL_Enable; // контроль уровня входного сигнала
+	sADCx.ADC_LowLevel         = L_Level;//нижний уровень контроля
+	sADCx.ADC_HighLevel        = H_Level; // верхний уровень
+	sADCx.ADC_VRefSource       = ADC_VREF_SOURCE_INTERNAL; //выбор внутреннего источника опорного напряжения
+	sADCx.ADC_IntVRefSource    = ADC_INT_VREF_SOURCE_INEXACT; //вид источника для датчика опорного напряжения
+	sADCx.ADC_Prescaler        = ADC_CLK_div_32768; //выбор делителя тактовой частоты
+	sADCx.ADC_DelayGo          = 0xF; //значение задержки перед началом следующего преобразования
+	
+	/* Initializes the ADC1 peripheral according to
+	the specified parameters in the ADCx_InitStruct */
+	ADC1_Init(&sADCx);
+	
+	/* Enable ADC1 EOCIF and AWOIFEN interupts */
+	ADC1_ITConfig((ADCx_IT_END_OF_CONVERSION | ADCx_IT_OUT_OF_RANGE), ENABLE);
+
+	/* ADC1 enable */
+	ADC1_Cmd(ENABLE);
+}
+
+
+void Delay(int waitTicks)
+{
+	int i;
+	for (i = 0; i < waitTicks; i++)
+	{
+		__NOP();
+	}
+}
+
+
+
+int main(void)
+{
+	LED_ini();
+	Button_ini();
+	Interrupt_ini();
+	
+	T = 200000;
+	
+	while (1)	
+	{
+		PORT_SetBits(MDR_PORTC, PORT_Pin_0);
+    
+		DELAY2(T);
+
+		PORT_ResetBits(MDR_PORTC, PORT_Pin_0);
+		  
+		DELAY2(T);
+	}
+}

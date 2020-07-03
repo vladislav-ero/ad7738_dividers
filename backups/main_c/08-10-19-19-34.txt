@@ -1,0 +1,227 @@
+// Содержимое файла main.c
+
+#include "MDR32Fx.h"                    // Device header
+#include "MDR32F9Qx_config.h"           // Keil::Device:Startup
+
+
+#include "MDR32F9Qx_uart.h"             // Keil::Drivers:UART
+#include <MDR32F9Qx_port.h>
+#include <MDR32F9Qx_rst_clk.h>
+#include "MDR32F9Qx_timer.h"            // Keil::Drivers:TIMER
+
+#define DELAY(T) for (i = T; i > 0; i--) 
+int i; 
+// Глобальная переменная счетчика в макроса DELAY()
+
+void UART(void);
+void LED(void);
+	
+
+void Timer1_IRQHandler()
+{
+	// Check if TIMER1 interrupt has occured
+	if (TIMER_GetITStatus(MDR_TIMER1, TIMER_STATUS_CNT_ZERO)) 
+	{
+		UART();
+	}
+	
+	// Reset TIMER1 interruption flag
+	TIMER_ClearITPendingBit(MDR_TIMER1, TIMER_STATUS_CNT_ZERO);
+}
+
+void UART(void) { //*
+	static uint8_t uart_counter = 0;
+	switch (uart_counter++ % 4) {
+		case 0:
+			{
+				UART_SendData(MDR_UART2, 0x00);
+				LED();
+			}
+			break;
+		case 1:
+			{
+				UART_SendData(MDR_UART2, 0x01);
+				LED();
+			}
+			break;
+		case 2:
+			{
+				UART_SendData(MDR_UART2, 0x02);
+				LED();
+			}
+			break;
+		case 3:
+			{
+				UART_SendData(MDR_UART2, 0x03);
+				LED();
+			}
+			break;
+		case 4:
+			{
+				UART_SendData(MDR_UART2, 0x04);
+				LED();
+			}
+			break;
+		case 5:
+			{
+				UART_SendData(MDR_UART2, 0x05);
+				LED();
+			}
+			break;
+	} //*/
+}
+
+// Процедура включения/выключения светодиода 
+void LED(void) { 
+	// Объявление переменной i 
+	static uint8_t led_counter = 0; 
+	// Инкрементируя i, находить остаток от деления i на 2 
+	switch (led_counter++ % 2) { 
+		// В случае если остаток равен нулю, сбросить бит по линии 0 
+		case 0: 
+			PORT_ResetBits(MDR_PORTC, PORT_Pin_0); 
+		// В противном случае перейти к следующей команде 
+			break; 
+		// В случае если остаток равен единице, установить бит по ли-нии 0 
+		case 1: 
+			PORT_SetBits(MDR_PORTC, PORT_Pin_0); 
+		// В противном случае перейти к следующей команде 
+			break; 
+	} 
+}
+
+void Clock_config(void) {
+	// Включение HSE осциллятора (внешнего кварцевого резонатора) для обеспечения стабильной
+	// частоты UART
+	RST_CLK_HSEconfig(RST_CLK_HSE_ON);
+	if (RST_CLK_HSEstatus() == SUCCESS)
+	{ // Если HSE осциллятор включился и прошел текст
+		// Выбор HSE осциллятора в качестве источника тактовых импульсов для CPU_PLL
+		// и установка умножителя тактовой частоты CPU_PLL равного 1 = 0+1
+		RST_CLK_CPU_PLLconfig(RST_CLK_CPU_PLLsrcHSEdiv1, 0);
+		// Включение схемы PLL
+		RST_CLK_CPU_PLLcmd(ENABLE);
+		if (RST_CLK_HSEstatus() == SUCCESS)	
+		{ //Если включение CPU_PLL прошло успешно
+			RST_CLK_CPUclkPrescaler(RST_CLK_CPUclkDIV1); // Установка CPU_C3_prescaler = 2
+			RST_CLK_CPU_PLLuse(ENABLE); // Установка CPU_C2_SEL от CPU_PLL выхода вместо CPU_C1 такта
+			/* Выбор CPU_C3 такта на мультиплексоре тактовых импульсов микропроцессора (CPU
+			clock MUX) */
+			RST_CLK_CPUclkSelection(RST_CLK_CPUclkCPU_C3);
+		}
+		else while(1);// блок CPU_PLL не включился
+	}
+	else while(1); // кварцевый резонатор HSE не включился
+}
+
+void Ports_ini(void)
+{
+	PORT_InitTypeDef NastroykaUART; 
+	RST_CLK_PCLKcmd(RST_CLK_PCLK_PORTF, ENABLE); 
+	PORT_StructInit(&NastroykaUART);
+	// Operation in UART mode 
+	NastroykaUART.PORT_FUNC  = PORT_FUNC_OVERRID;
+	NastroykaUART.PORT_SPEED = PORT_SPEED_MAXFAST;
+	NastroykaUART.PORT_MODE  = PORT_MODE_DIGITAL;	
+	// PF1 as UART_TX
+	NastroykaUART.PORT_Pin   = PORT_Pin_1;
+	NastroykaUART.PORT_OE    = PORT_OE_OUT;
+	PORT_Init(MDR_PORTF, &NastroykaUART);
+	// PF0 as UART_RX
+	NastroykaUART.PORT_Pin   = PORT_Pin_0;
+	NastroykaUART.PORT_OE    = PORT_OE_IN;
+	PORT_Init(MDR_PORTF, &NastroykaUART);
+	
+	PORT_InitTypeDef NastroykaLED; 
+	RST_CLK_PCLKcmd(RST_CLK_PCLK_PORTC, ENABLE); 
+	PORT_StructInit(&NastroykaLED); 
+	NastroykaLED.PORT_Pin   = PORT_Pin_0; 
+	NastroykaLED.PORT_OE    = PORT_OE_OUT; 
+	NastroykaLED.PORT_FUNC  = PORT_FUNC_PORT; 
+	NastroykaLED.PORT_MODE  = PORT_MODE_DIGITAL; 
+	NastroykaLED.PORT_SPEED = PORT_SPEED_SLOW; 
+	PORT_Init(MDR_PORTC, &NastroykaLED);
+}
+
+void Timer_ini(void)
+{
+	RST_CLK_PCLKcmd(RST_CLK_PCLK_TIMER1, ENABLE); // Enable Timer1 clocking
+	TIMER_CntInitTypeDef TimerInitStruct;
+	TIMER_CntStructInit(&TimerInitStruct);
+	
+	TIMER_BRGInit(MDR_TIMER1, TIMER_HCLKdiv1); // Set clock divider
+
+	TimerInitStruct.TIMER_Prescaler = 8000; // CPUclk 8M div n == 8/n Hz (1 ms)
+	TimerInitStruct.TIMER_Period    = 1000;  // 1 ms * n == n ms
+	
+	TIMER_CntInit(MDR_TIMER1, &TimerInitStruct);
+	
+	NVIC_EnableIRQ(Timer1_IRQn); // Enable Timer1 Interrupt
+	TIMER_ITConfig(MDR_TIMER1, TIMER_STATUS_CNT_ZERO, ENABLE);
+	//Interrupt is active when TIMER1 value equals zero
+	NVIC_SetPriority(Timer1_IRQn, 0);
+	TIMER_Cmd(MDR_TIMER1, ENABLE); // Run TIMER1
+}
+
+void UART_ini(void)
+{
+	// Enable UART2 clocking
+	RST_CLK_PCLKcmd(RST_CLK_PCLK_UART2, ENABLE);
+	UART_InitTypeDef UARTInitStruct;
+	
+	UARTInitStruct.UART_BaudRate			 = 9600;
+	UARTInitStruct.UART_WordLength			 = UART_WordLength8b;
+	UARTInitStruct.UART_StopBits			 = UART_StopBits1;
+	UARTInitStruct.UART_Parity				 = UART_Parity_No;
+	UARTInitStruct.UART_FIFOMode			 = UART_FIFO_OFF;
+	UARTInitStruct.UART_HardwareFlowControl  = UART_HardwareFlowControl_RXE
+											 | UART_HardwareFlowControl_TXE;
+	
+	//UARTInitStruct.UART_HardwareFlowControl  = UART_HardwareFlowControl_None;
+	// Initialize UART2
+	UART_Init(MDR_UART2, &UARTInitStruct);
+	UART_BRGInit(MDR_UART2, UART_HCLKdiv1);
+	// Turn on UART2
+	UART_Cmd(MDR_UART2, ENABLE);
+}
+
+
+
+
+int main(void)
+{
+	Clock_config();
+	Ports_ini();
+	Timer_ini();
+	UART_ini();
+	
+	while (1)
+	{
+		/*
+		UART_SendData(MDR_UART2, 'U'); 
+		// Передать символ U 
+		DELAY(500000); 
+		// Задержка 
+		UART_SendData(MDR_UART2, 'A'); 
+		// Передать символ A 
+		DELAY(500000); 
+		// Задержка 
+		UART_SendData(MDR_UART2, 'R'); 
+		// Передать символ R 
+		DELAY(50000); 
+		// Задержка 
+		UART_SendData(MDR_UART2, 'T'); 
+		// Передать символ T 
+		DELAY(500000); 
+		// Задержка 
+		UART_SendData(MDR_UART2, '\n'); 
+		// Перевод строки 
+		DELAY(50000); 
+		// Задержка
+		UART_SendData(MDR_UART2, '\r'); 
+		// Возврат каретки 
+		DELAY(5000000); 
+		// Задержка
+		*/
+	}
+}
