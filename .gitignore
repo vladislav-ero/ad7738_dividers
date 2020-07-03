@@ -1,3 +1,5 @@
+zsh:1: command not found: wq
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
